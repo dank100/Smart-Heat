@@ -1,0 +1,8 @@
+{
+  "name": "Wavin Smart Heat",
+  "content_in_root": false,
+  "domains": ["wavin_smart_heat"],
+  "country": ["DK"],
+  "iot_class": "local_polling",
+  "render_readme": true
+}
