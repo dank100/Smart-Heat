@@ -29,7 +29,6 @@ from .const import (
     CONF_MIN_TEMP,
     CONF_MORNING_TEMP,
     CONF_MORNING_TIME,
-    CONF_WAKE_TIME,
     CONF_NIGHT_START,
     CONF_NIGHT_TEMP,
     CONF_PREHEAT_MINUTES,
@@ -63,9 +62,7 @@ class RoomConfig:
     day_start: str
     night_start: str
     morning_time: str
-    wake_time: str | None
     morning_temp: float
-    preheat_minutes: int
     min_temp: float
     max_temp: float
 
@@ -153,9 +150,7 @@ class WavinSmartHeatCoordinator:
                     day_start=room[CONF_DAY_START],
                     night_start=room[CONF_NIGHT_START],
                     morning_time=room.get(CONF_MORNING_TIME, "06:30"),
-                    wake_time=room.get(CONF_WAKE_TIME),
                     morning_temp=float(room.get(CONF_MORNING_TEMP, room[CONF_DAY_TEMP])),
-                    preheat_minutes=int(room.get(CONF_PREHEAT_MINUTES, 90)),
                     min_temp=float(room.get(CONF_MIN_TEMP, 17.0)),
                     max_temp=float(room.get(CONF_MAX_TEMP, 24.0)),
                 )
@@ -201,7 +196,7 @@ class WavinSmartHeatCoordinator:
             )
             predicted_delta = self._predict_and_learn(room.room_name, features, current_temp, learning_rate)
 
-            expected_temp = self._expected_temp(room, effective_sleep_time)
+            expected_temp = self._expected_temp(room, effective_sleep_time, current_temp)
             recommended_target = self._recommend_target(room, current_temp, expected_temp, predicted_delta)
 
             self.room_states[room.room_name] = {
@@ -276,7 +271,7 @@ class WavinSmartHeatCoordinator:
         prediction = sum(weights.get(k, 0.0) * float(v) for k, v in features.items())
         return float(prediction)
 
-    def _expected_temp(self, room: RoomConfig, sleep_time: time | None) -> float:
+    def _expected_temp(self, room: RoomConfig, sleep_time: time | None, current_temp: float) -> float:
         now = dt_util.now()
         day_start = self._parse_time(room.day_start)
         night_start = self._parse_time(room.night_start)
@@ -287,15 +282,14 @@ class WavinSmartHeatCoordinator:
                 expected = room.night_temp
 
         morning_time = self._parse_time(room.morning_time)
-        if room.wake_time:
-            morning_time = self._parse_time(room.wake_time) or morning_time
         if sleep_time is not None:
             morning_time = sleep_time
 
         if morning_time:
+            preheat_minutes = self._compute_preheat_minutes(current_temp, room.morning_temp)
             preheat_start = (
                 datetime.combine(now.date(), morning_time)
-                - timedelta(minutes=room.preheat_minutes)
+                - timedelta(minutes=preheat_minutes)
             ).time()
             if self._is_time_between(now.time(), preheat_start, morning_time):
                 expected = max(expected, room.morning_temp)
@@ -316,6 +310,21 @@ class WavinSmartHeatCoordinator:
 
         target = min(max(target, room.min_temp), room.max_temp)
         return round(target, 1)
+
+    def _compute_preheat_minutes(self, current_temp: float, target_temp: float) -> int:
+        # Dynamic preheat based on weather-driven heat loss and temperature gap.
+        outside = float(self.global_state.get("outside_temp", 10.0))
+        wind = float(self.global_state.get("wind_speed", 0.0))
+        clouds = float(self.global_state.get("cloud_coverage", 50.0))
+        temp_gap = max(0.0, target_temp - current_temp)
+
+        minutes = 40.0
+        minutes += temp_gap * 8.0
+        minutes += max(0.0, 18.0 - outside) * 2.0
+        minutes += wind * 2.0
+        minutes += max(0.0, clouds - 50.0) * 0.2
+
+        return int(max(30, min(180, minutes)))
 
     async def _async_apply_target(self, room: RoomConfig, target: float) -> None:
         state = self.hass.states.get(room.climate_entity)

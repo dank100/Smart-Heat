@@ -17,9 +17,7 @@ CONF_NIGHT_START = "night_start"
 CONF_MIN_TEMP = "min_temp"
 CONF_MAX_TEMP = "max_temp"
 CONF_MORNING_TIME = "morning_time"
-CONF_WAKE_TIME = "wake_time"
 CONF_MORNING_TEMP = "morning_temp"
-CONF_PREHEAT_MINUTES = "preheat_minutes"
 
 CONF_WEATHER_ENTITY = "weather_entity"
 CONF_SUN_ENTITY = "sun_entity"
@@ -32,7 +30,6 @@ CONF_APPLY_CHANGES = "apply_changes"
 
 DEFAULT_UPDATE_INTERVAL = 600
 DEFAULT_LEARNING_RATE = 0.02
-DEFAULT_PREHEAT_MINUTES = 90
 DEFAULT_MIN_TEMP = 17.0
 DEFAULT_MAX_TEMP = 24.0
 

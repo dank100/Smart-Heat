@@ -31,9 +31,7 @@
           "day_start": "Day start (HH:MM)",
           "night_start": "Night start (HH:MM)",
           "morning_time": "Morning time (HH:MM)",
-          "wake_time": "Room wake time (optional)",
           "morning_temp": "Morning target temperature",
-          "preheat_minutes": "Preheat minutes",
           "min_temp": "Minimum allowed temp",
           "max_temp": "Maximum allowed temp"
         }

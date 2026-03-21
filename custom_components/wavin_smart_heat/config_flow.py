@@ -23,10 +23,8 @@ from .const import (
     CONF_MIN_TEMP,
     CONF_MORNING_TEMP,
     CONF_MORNING_TIME,
-    CONF_WAKE_TIME,
     CONF_NIGHT_START,
     CONF_NIGHT_TEMP,
-    CONF_PREHEAT_MINUTES,
     CONF_ROOM_NAME,
     CONF_ROOMS,
     CONF_SLEEP_ENTITY,
@@ -98,11 +96,7 @@ def _room_schema(room: dict[str, Any] | None) -> vol.Schema:
             vol.Required(CONF_DAY_START, default=defaults.get(CONF_DAY_START, "07:00")): str,
             vol.Required(CONF_NIGHT_START, default=defaults.get(CONF_NIGHT_START, "22:30")): str,
             vol.Optional(CONF_MORNING_TIME, default=defaults.get(CONF_MORNING_TIME, "06:30")): str,
-            vol.Optional(CONF_WAKE_TIME, default=defaults.get(CONF_WAKE_TIME)): selector.TimeSelector(),
             vol.Optional(CONF_MORNING_TEMP, default=defaults.get(CONF_MORNING_TEMP, 21.0)): vol.Coerce(float),
-            vol.Optional(CONF_PREHEAT_MINUTES, default=defaults.get(CONF_PREHEAT_MINUTES, DEFAULT_PREHEAT_MINUTES)): vol.All(
-                vol.Coerce(int), vol.Range(min=15, max=240)
-            ),
             vol.Optional(CONF_MIN_TEMP, default=defaults.get(CONF_MIN_TEMP, DEFAULT_MIN_TEMP)): vol.Coerce(float),
             vol.Optional(CONF_MAX_TEMP, default=defaults.get(CONF_MAX_TEMP, DEFAULT_MAX_TEMP)): vol.Coerce(float),
         }
