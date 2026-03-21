@@ -179,12 +179,16 @@ class WavinSmartHeatCoordinator:
 
         for room in self._room_configs():
             current_temp = self._get_float_state(room.temp_sensor)
+            has_real_temp = current_temp is not None
             if current_temp is None:
                 current_temp = self._get_climate_current_temp(room.climate_entity)
+                has_real_temp = current_temp is not None
+            if current_temp is None:
+                current_temp = self._get_climate_target_temp(room.climate_entity)
             if current_temp is None:
                 current_temp = self._get_last_temp(room.room_name)
             if current_temp is None:
-                continue
+                current_temp = room.night_temp
 
             lights_on = self._lights_on(room)
             effective_sleep_time = None if lights_on else sleep_time
@@ -194,7 +198,10 @@ class WavinSmartHeatCoordinator:
                 global_values,
                 effective_sleep_time,
             )
-            predicted_delta = self._predict_and_learn(room.room_name, features, current_temp, learning_rate)
+            if has_real_temp:
+                predicted_delta = self._predict_and_learn(room.room_name, features, current_temp, learning_rate)
+            else:
+                predicted_delta = self._predict_only(room.room_name, features)
 
             expected_temp = self._expected_temp(room, effective_sleep_time, current_temp)
             recommended_target = self._recommend_target(room, current_temp, expected_temp, predicted_delta)
@@ -268,6 +275,19 @@ class WavinSmartHeatCoordinator:
         model["last_temp"] = current_temp
         model["last_features"] = features
 
+        prediction = sum(weights.get(k, 0.0) * float(v) for k, v in features.items())
+        return float(prediction)
+
+    def _predict_only(self, room_name: str, features: dict[str, float]) -> float:
+        model = self.model_state.setdefault(room_name, {
+            "weights": {},
+            "last_temp": None,
+            "last_features": None,
+            "samples": 0,
+        })
+        weights: dict[str, float] = model.setdefault("weights", {})
+        for key in features:
+            weights.setdefault(key, 0.0)
         prediction = sum(weights.get(k, 0.0) * float(v) for k, v in features.items())
         return float(prediction)
 
@@ -390,6 +410,16 @@ class WavinSmartHeatCoordinator:
         except (TypeError, ValueError):
             return None
 
+    def _get_climate_target_temp(self, entity_id: str) -> float | None:
+        state = self.hass.states.get(entity_id)
+        if state is None or state.state in ("unknown", "unavailable"):
+            return None
+        try:
+            value = state.attributes.get("temperature")
+            return float(value) if value is not None else None
+        except (TypeError, ValueError):
+            return None
+
     def _get_last_temp(self, room_name: str) -> float | None:
         model = self.model_state.get(room_name)
         if not model:
@@ -416,7 +446,17 @@ class WavinSmartHeatCoordinator:
         sun_elevation_sensor: str,
         uv_sensor: str,
     ) -> dict[str, float]:
-        values: dict[str, float] = {}
+        values: dict[str, float] = {
+            "outside_temp": 10.0,
+            "wind_speed": 0.0,
+            "wind_bearing": 0.0,
+            "wind_gust_speed": 0.0,
+            "humidity": 0.0,
+            "cloud_coverage": 0.0,
+            "pressure": 0.0,
+            "visibility": 0.0,
+            "uv_index": 0.0,
+        }
 
         weather_state = self.hass.states.get(weather_entity) if weather_entity else None
         if weather_state is not None:
