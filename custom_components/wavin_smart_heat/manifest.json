@@ -1,0 +1,10 @@
+{
+  "domain": "wavin_smart_heat",
+  "name": "Wavin Smart Heat",
+  "version": "0.1.0",
+  "documentation": "https://example.com/wavin_smart_heat",
+  "config_flow": true,
+  "iot_class": "local_polling",
+  "codeowners": ["@local"],
+  "requirements": []
+}

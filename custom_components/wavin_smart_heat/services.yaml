@@ -1,0 +1,3 @@
+apply_recommendations:
+  name: Apply Recommendations
+  description: Apply the current recommended target temperature for all configured rooms.

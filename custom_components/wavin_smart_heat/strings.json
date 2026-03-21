@@ -1,0 +1,67 @@
+{
+  "title": "Wavin Smart Heat",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Wavin Smart Heat",
+        "description": "Set up global inputs for weather and sleep.",
+        "data": {
+          "weather_entity": "Weather entity",
+          "sun_entity": "Sun entity",
+          "sleep_entity": "Sleep end time (input_datetime)",
+          "sun_elevation_sensor": "Sun elevation sensor (optional)",
+          "uv_sensor": "UV sensor (optional)",
+          "update_interval": "Update interval (seconds)",
+          "learning_rate": "Learning rate",
+          "apply_changes": "Automatically apply recommended targets"
+        }
+      },
+      "room": {
+        "title": "Room setup",
+        "description": "Configure a room and its sensors.",
+        "data": {
+          "room_name": "Room name",
+          "area_id": "Area",
+          "climate_entity": "Climate entity",
+          "temp_sensor": "Temperature sensor",
+          "light_entities": "Light entities (optional)",
+          "extra_sensors": "Extra sensors (optional)",
+          "day_temp": "Day temperature",
+          "night_temp": "Night temperature",
+          "day_start": "Day start (HH:MM)",
+          "night_start": "Night start (HH:MM)",
+          "morning_time": "Morning time (HH:MM)",
+          "wake_time": "Room wake time (optional)",
+          "morning_temp": "Morning target temperature",
+          "preheat_minutes": "Preheat minutes",
+          "min_temp": "Minimum allowed temp",
+          "max_temp": "Maximum allowed temp"
+        }
+      },
+      "add_another": {
+        "title": "Add another room?",
+        "data": {
+          "add_another": "Add another room"
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Wavin Smart Heat Options",
+        "description": "Update global settings.",
+        "data": {
+          "weather_entity": "Weather entity",
+          "sun_entity": "Sun entity",
+          "sleep_entity": "Sleep end time (input_datetime)",
+          "sun_elevation_sensor": "Sun elevation sensor (optional)",
+          "uv_sensor": "UV sensor (optional)",
+          "update_interval": "Update interval (seconds)",
+          "learning_rate": "Learning rate",
+          "apply_changes": "Automatically apply recommended targets"
+        }
+      }
+    }
+  }
+}
