@@ -14,6 +14,8 @@ from homeassistant.components.lovelace.const import (
     CONF_SHOW_IN_SIDEBAR,
     CONF_TITLE,
     CONF_URL_PATH,
+    EVENT_LOVELACE_UPDATED,
+    LOVELACE_DATA,
 )
 
 from .const import DOMAIN, PLATFORMS
@@ -60,7 +62,7 @@ async def _async_ensure_wavin_dashboard(hass: HomeAssistant, entry_id: str) -> N
             break
 
     if existing is None:
-        await dashboards.async_create_item(
+        existing = await dashboards.async_create_item(
             {
                 CONF_TITLE: "Wavin Heat",
                 CONF_ICON: "mdi:fire",
@@ -69,41 +71,27 @@ async def _async_ensure_wavin_dashboard(hass: HomeAssistant, entry_id: str) -> N
             }
         )
 
-    # Create a simple default view if none exists.
-    store = Store(hass, 1, f"lovelace.{url_path}")
+    # Create or refresh a simple default view.
+    dashboard_id = existing["id"]
+    store = Store(hass, 1, f"lovelace.{dashboard_id}")
     data = await store.async_load() or {"config": None}
-    if data.get("config") is None:
-        entity_ids = _collect_room_entity_ids(hass, entry_id)
-        data["config"] = {
-            "title": "Wavin Heat",
-            "views": [
-                {
-                    "title": "Wavin Heat",
-                    "path": "wavin-heat",
-                    "cards": [
-                        {
-                            "type": "entities",
-                            "title": "Wavin Smart Heat",
-                            "entities": entity_ids,
-                        },
-                        {
-                            "type": "button",
-                            "name": "Apply Recommendations",
-                            "tap_action": {
-                                "action": "call-service",
-                                "service": "wavin_smart_heat.apply_recommendations",
-                            },
-                        },
-                    ],
-                }
-            ],
-        }
-        await store.async_save(data)
+    room_entities, global_entities = _collect_room_entities(hass, entry_id)
+    if _needs_dashboard_refresh(data.get("config"), room_entities, global_entities):
+        config = _build_default_dashboard_config(room_entities, global_entities)
+
+        lovelace_data = hass.data.get(LOVELACE_DATA)
+        dashboard = lovelace_data.dashboards.get(url_path) if lovelace_data else None
+        if dashboard is not None:
+            await dashboard.async_save(config)
+        else:
+            data["config"] = config
+            await store.async_save(data)
+            hass.bus.async_fire(EVENT_LOVELACE_UPDATED, {"url_path": url_path})
 
 
-def _collect_room_entity_ids(hass: HomeAssistant, entry_id: str) -> list[str]:
+def _collect_room_entities(hass: HomeAssistant, entry_id: str) -> tuple[dict[str, list[str]], list[str]]:
     registry = async_get_entity_registry(hass)
-    entities: list[str] = []
+    room_entities: dict[str, list[str]] = {}
     # Room sensors
     room_names = []
     coordinator = hass.data.get(DOMAIN, {}).get(entry_id)
@@ -117,13 +105,15 @@ def _collect_room_entity_ids(hass: HomeAssistant, entry_id: str) -> list[str]:
         "confidence",
     ]
     for room_name in room_names:
+        room_entities[room_name] = []
         for key in room_keys:
             unique_id = f"{entry_id}_{room_name}_{key}"
             entry = registry.async_get_entity_id("sensor", DOMAIN, unique_id)
             if entry:
-                entities.append(entry)
+                room_entities[room_name].append(entry)
 
     # Global sensors (if present)
+    global_entities: list[str] = []
     global_keys = [
         "sun_elevation",
         "wind_speed",
@@ -140,9 +130,83 @@ def _collect_room_entity_ids(hass: HomeAssistant, entry_id: str) -> list[str]:
         unique_id = f"{entry_id}_global_{key}"
         entry = registry.async_get_entity_id("sensor", DOMAIN, unique_id)
         if entry:
-            entities.append(entry)
+            global_entities.append(entry)
 
-    return entities
+    return room_entities, global_entities
+
+
+def _build_default_dashboard_config(
+    room_entities: dict[str, list[str]],
+    global_entities: list[str],
+) -> dict:
+    sections: list[dict] = []
+    for room_name, entities in room_entities.items():
+        if not entities:
+            continue
+        sections.append(
+            {
+                "type": "grid",
+                "cards": [
+                    {
+                        "type": "markdown",
+                        "content": f"## {room_name}",
+                    },
+                    {
+                        "type": "entities",
+                        "title": f"{room_name} Sensors",
+                        "entities": entities,
+                    },
+                ],
+            }
+        )
+
+    if global_entities:
+        sections.append(
+            {
+                "type": "grid",
+                "cards": [
+                    {
+                        "type": "markdown",
+                        "content": "## Global Sensors",
+                    },
+                    {
+                        "type": "entities",
+                        "title": "Global",
+                        "entities": global_entities,
+                    },
+                ],
+            }
+        )
+
+    return {
+        "title": "Wavin Heat",
+        "views": [
+            {
+                "title": "Wavin Heat",
+                "path": "wavin-heat",
+                "type": "sections",
+                "sections": sections
+            }
+        ],
+    }
+
+
+def _needs_dashboard_refresh(
+    config: dict | None,
+    room_entities: dict[str, list[str]],
+    global_entities: list[str],
+) -> bool:
+    if config is None:
+        return True
+    views = config.get("views")
+    if not isinstance(views, list) or not views:
+        return True
+    first_view = views[0]
+    sections = first_view.get("sections")
+    if not isinstance(sections, list) or not sections:
+        return True
+    has_any = any(room_entities.values()) or bool(global_entities)
+    return has_any and not sections
 
 
 async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
