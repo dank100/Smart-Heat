@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
+from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 from homeassistant.helpers.storage import Store
 
 from homeassistant.components.lovelace import dashboard as lovelace_dashboard
@@ -25,7 +27,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
 
-    await _async_ensure_wavin_dashboard(hass)
+    async def _setup_dashboard(_event) -> None:
+        await _async_ensure_wavin_dashboard(hass, entry.entry_id)
+
+    if hass.is_running:
+        hass.async_create_task(_async_ensure_wavin_dashboard(hass, entry.entry_id))
+    else:
+        hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, _setup_dashboard)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
@@ -39,7 +47,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return unload_ok
 
 
-async def _async_ensure_wavin_dashboard(hass: HomeAssistant) -> None:
+async def _async_ensure_wavin_dashboard(hass: HomeAssistant, entry_id: str) -> None:
     """Ensure a Wavin Heat Lovelace dashboard exists with a basic view."""
     dashboards = lovelace_dashboard.DashboardsCollection(hass)
     await dashboards.async_load()
@@ -65,6 +73,7 @@ async def _async_ensure_wavin_dashboard(hass: HomeAssistant) -> None:
     store = Store(hass, 1, f"lovelace.{url_path}")
     data = await store.async_load() or {"config": None}
     if data.get("config") is None:
+        entity_ids = _collect_room_entity_ids(hass, entry_id)
         data["config"] = {
             "title": "Wavin Heat",
             "views": [
@@ -75,7 +84,7 @@ async def _async_ensure_wavin_dashboard(hass: HomeAssistant) -> None:
                         {
                             "type": "entities",
                             "title": "Wavin Smart Heat",
-                            "entities": [],
+                            "entities": entity_ids,
                         },
                         {
                             "type": "button",
@@ -90,6 +99,50 @@ async def _async_ensure_wavin_dashboard(hass: HomeAssistant) -> None:
             ],
         }
         await store.async_save(data)
+
+
+def _collect_room_entity_ids(hass: HomeAssistant, entry_id: str) -> list[str]:
+    registry = async_get_entity_registry(hass)
+    entities: list[str] = []
+    # Room sensors
+    room_names = []
+    coordinator = hass.data.get(DOMAIN, {}).get(entry_id)
+    if coordinator:
+        room_names = [room.room_name for room in coordinator._room_configs()]
+
+    room_keys = [
+        "predicted_delta",
+        "expected_temp",
+        "recommended_target",
+        "confidence",
+    ]
+    for room_name in room_names:
+        for key in room_keys:
+            unique_id = f"{entry_id}_{room_name}_{key}"
+            entry = registry.async_get_entity_id("sensor", DOMAIN, unique_id)
+            if entry:
+                entities.append(entry)
+
+    # Global sensors (if present)
+    global_keys = [
+        "sun_elevation",
+        "wind_speed",
+        "wind_bearing",
+        "wind_gust_speed",
+        "outside_temp",
+        "humidity",
+        "cloud_coverage",
+        "pressure",
+        "visibility",
+        "uv_index",
+    ]
+    for key in global_keys:
+        unique_id = f"{entry_id}_global_{key}"
+        entry = registry.async_get_entity_id("sensor", DOMAIN, unique_id)
+        if entry:
+            entities.append(entry)
+
+    return entities
 
 
 async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
