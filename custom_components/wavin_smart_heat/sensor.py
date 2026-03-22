@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from typing import Any
 
 from homeassistant.components.sensor import SensorEntity, SensorEntityDescription
@@ -118,9 +119,17 @@ class WavinSmartHeatSensor(SensorEntity):
         value = state.get(self.entity_description.key)
         if value is None:
             return None
+        try:
+            value = float(value)
+        except (TypeError, ValueError):
+            return None
+        if not math.isfinite(value):
+            return None
+        if abs(value) > 100.0:
+            return None
         if self.entity_description.key == "predicted_delta":
-            return round(float(value), 2)
-        return round(float(value), 1)
+            return round(value, 2)
+        return round(value, 1)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -175,7 +184,13 @@ class WavinSmartHeatGlobalSensor(SensorEntity):
         value = self.coordinator.global_state.get(self.entity_description.key)
         if value is None:
             return None
-        return round(float(value), 2)
+        try:
+            value = float(value)
+        except (TypeError, ValueError):
+            return None
+        if not math.isfinite(value):
+            return None
+        return round(value, 2)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:

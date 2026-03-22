@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta, time
 from typing import Any
+import math
 import asyncio
 import logging
 
@@ -66,6 +67,11 @@ class RoomConfig:
 
 class WavinSmartHeatCoordinator:
     """Main coordinator for Wavin Smart Heat."""
+
+    _PREDICTION_CLAMP = 5.0
+    _FEATURE_CLAMP = 10000.0
+    _TARGET_STEP_MAX = 0.3
+    _TARGET_EPSILON = 0.05
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         self.hass = hass
@@ -199,8 +205,11 @@ class WavinSmartHeatCoordinator:
             else:
                 predicted_delta = self._predict_only(room.room_name, features)
 
+            predicted_delta = self._sanitize_prediction(predicted_delta)
+
             expected_temp = self._expected_temp(room, effective_sleep_time, current_temp)
             recommended_target = self._recommend_target(room, current_temp, expected_temp, predicted_delta)
+            recommended_target = self._smooth_target(room.room_name, recommended_target)
 
             self.room_states[room.room_name] = {
                 "predicted_delta": predicted_delta,
@@ -226,18 +235,19 @@ class WavinSmartHeatCoordinator:
         sleep_time: time | None,
     ) -> dict[str, float]:
         features: dict[str, float] = {}
-        features.update(global_values)
+        for key, value in global_values.items():
+            features[key] = self._sanitize_feature(value)
 
         features["window_open"] = 1.0 if self._is_window_open(room) else 0.0
 
         if sleep_time is not None:
             minutes_until = self._minutes_until_time(sleep_time)
-            features["minutes_until_sleep_end"] = minutes_until
+            features["minutes_until_sleep_end"] = self._sanitize_feature(minutes_until)
 
         for entity_id in room.extra_sensors:
             value = self._get_float_state(entity_id)
             if value is not None:
-                features[f"sensor_{entity_id}"] = value
+                features[f"sensor_{entity_id}"] = self._sanitize_feature(value)
 
         features["bias"] = 1.0
         return features
@@ -264,17 +274,21 @@ class WavinSmartHeatCoordinator:
         last_features = model.get("last_features")
         if last_temp is not None and last_features:
             y = current_temp - float(last_temp)
-            pred = sum(weights.get(k, 0.0) * float(v) for k, v in last_features.items())
-            error = y - pred
-            for k, v in last_features.items():
-                weights[k] = weights.get(k, 0.0) + learning_rate * error * float(v)
-            model["samples"] = int(model.get("samples", 0)) + 1
+            if math.isfinite(y) and abs(y) <= 5.0:
+                pred = self._safe_dot(weights, last_features)
+                error = y - pred
+                for k, v in last_features.items():
+                    if not math.isfinite(float(v)):
+                        continue
+                    weights[k] = weights.get(k, 0.0) + learning_rate * error * float(v)
+                    weights[k] = float(max(-5.0, min(5.0, weights[k])))
+                model["samples"] = int(model.get("samples", 0)) + 1
 
         model["last_temp"] = current_temp
         model["last_features"] = features
 
-        prediction = sum(weights.get(k, 0.0) * float(v) for k, v in features.items())
-        return float(prediction)
+        prediction = self._safe_dot(weights, features)
+        return self._sanitize_prediction(prediction)
 
     def _predict_only(self, room_name: str, features: dict[str, float]) -> float:
         model = self.model_state.setdefault(room_name, {
@@ -286,8 +300,43 @@ class WavinSmartHeatCoordinator:
         weights: dict[str, float] = model.setdefault("weights", {})
         for key in features:
             weights.setdefault(key, 0.0)
-        prediction = sum(weights.get(k, 0.0) * float(v) for k, v in features.items())
-        return float(prediction)
+        prediction = self._safe_dot(weights, features)
+        return self._sanitize_prediction(prediction)
+
+    @staticmethod
+    def _safe_dot(weights: dict[str, float], features: dict[str, float]) -> float:
+        total = 0.0
+        for k, v in features.items():
+            try:
+                fv = float(v)
+            except (TypeError, ValueError):
+                continue
+            if not math.isfinite(fv):
+                continue
+            total += weights.get(k, 0.0) * fv
+        if not math.isfinite(total):
+            return 0.0
+        return total
+
+    def _sanitize_feature(self, value: Any) -> float:
+        try:
+            fv = float(value)
+        except (TypeError, ValueError):
+            return 0.0
+        if not math.isfinite(fv):
+            return 0.0
+        clamp = self._FEATURE_CLAMP
+        return float(max(-clamp, min(clamp, fv)))
+
+    def _sanitize_prediction(self, value: Any) -> float:
+        try:
+            fv = float(value)
+        except (TypeError, ValueError):
+            return 0.0
+        if not math.isfinite(fv):
+            return 0.0
+        clamp = self._PREDICTION_CLAMP
+        return float(max(-clamp, min(clamp, fv)))
 
     def _expected_temp(self, room: RoomConfig, sleep_time: time | None, current_temp: float) -> float:
         now = dt_util.now()
@@ -320,6 +369,26 @@ class WavinSmartHeatCoordinator:
 
         target = min(max(target, room.min_temp), room.max_temp)
         return round(target, 1)
+
+    def _smooth_target(self, room_name: str, target: float) -> float:
+        model = self.model_state.setdefault(room_name, {})
+        last_target = model.get("last_recommended_target")
+        if last_target is None:
+            model["last_recommended_target"] = float(target)
+            return target
+        try:
+            last_target = float(last_target)
+        except (TypeError, ValueError):
+            model["last_recommended_target"] = float(target)
+            return target
+
+        if abs(target - last_target) <= self._TARGET_EPSILON:
+            return last_target
+
+        step = max(-self._TARGET_STEP_MAX, min(self._TARGET_STEP_MAX, target - last_target))
+        new_target = last_target + step
+        model["last_recommended_target"] = float(new_target)
+        return round(new_target, 1)
 
     def _compute_preheat_minutes(self, current_temp: float, target_temp: float, window_open: bool) -> int:
         # Dynamic preheat based on weather-driven heat loss and temperature gap.
