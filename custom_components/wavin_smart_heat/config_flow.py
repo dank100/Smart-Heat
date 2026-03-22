@@ -45,20 +45,25 @@ def _global_schema(user_input: dict[str, Any] | None) -> vol.Schema:
     defaults = user_input or {}
     return vol.Schema(
         {
-            vol.Optional(CONF_WEATHER_ENTITY, default=defaults.get(CONF_WEATHER_ENTITY)): selector.EntitySelector(
-                selector.EntitySelectorConfig(domain="weather")
+            vol.Optional(CONF_WEATHER_ENTITY, default=defaults.get(CONF_WEATHER_ENTITY)): vol.Any(
+                None,
+                selector.EntitySelector(selector.EntitySelectorConfig(domain="weather")),
             ),
-            vol.Optional(CONF_SUN_ENTITY, default=defaults.get(CONF_SUN_ENTITY, "sun.sun")): selector.EntitySelector(
-                selector.EntitySelectorConfig(domain="sun")
+            vol.Optional(CONF_SUN_ENTITY, default=defaults.get(CONF_SUN_ENTITY, "sun.sun")): vol.Any(
+                None,
+                selector.EntitySelector(selector.EntitySelectorConfig(domain="sun")),
             ),
-            vol.Optional(CONF_SLEEP_ENTITY, default=defaults.get(CONF_SLEEP_ENTITY)): selector.EntitySelector(
-                selector.EntitySelectorConfig(domain="input_datetime")
+            vol.Optional(CONF_SLEEP_ENTITY, default=defaults.get(CONF_SLEEP_ENTITY)): vol.Any(
+                None,
+                selector.EntitySelector(selector.EntitySelectorConfig(domain="input_datetime")),
             ),
-            vol.Optional(CONF_SUN_ELEVATION_SENSOR, default=defaults.get(CONF_SUN_ELEVATION_SENSOR)): selector.EntitySelector(
-                selector.EntitySelectorConfig(domain="sensor")
+            vol.Optional(CONF_SUN_ELEVATION_SENSOR, default=defaults.get(CONF_SUN_ELEVATION_SENSOR)): vol.Any(
+                None,
+                selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
             ),
-            vol.Optional(CONF_UV_SENSOR, default=defaults.get(CONF_UV_SENSOR)): selector.EntitySelector(
-                selector.EntitySelectorConfig(domain="sensor")
+            vol.Optional(CONF_UV_SENSOR, default=defaults.get(CONF_UV_SENSOR)): vol.Any(
+                None,
+                selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor")),
             ),
             vol.Optional(CONF_UPDATE_INTERVAL, default=defaults.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)): vol.All(
                 vol.Coerce(int), vol.Range(min=60, max=3600)
