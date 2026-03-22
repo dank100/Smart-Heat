@@ -30,9 +30,6 @@
           "extra_sensors": "Extra sensors (optional)",
           "day_temp": "Day temperature",
           "night_temp": "Night temperature",
-          "day_start": "Day start (HH:MM)",
-          "night_start": "Night start (HH:MM)",
-          "morning_time": "Morning time (HH:MM)",
           "morning_temp": "Morning target temperature",
           "min_temp": "Minimum allowed temp",
           "max_temp": "Maximum allowed temp"

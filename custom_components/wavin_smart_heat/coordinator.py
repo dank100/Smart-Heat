@@ -20,7 +20,6 @@ from .const import (
     CONF_APPLY_CHANGES,
     CONF_AREA_ID,
     CONF_CLIMATE_ENTITY,
-    CONF_DAY_START,
     CONF_DAY_TEMP,
     CONF_EXTRA_SENSORS,
     CONF_LEARNING_RATE,
@@ -29,8 +28,6 @@ from .const import (
     CONF_MAX_TEMP,
     CONF_MIN_TEMP,
     CONF_MORNING_TEMP,
-    CONF_MORNING_TIME,
-    CONF_NIGHT_START,
     CONF_NIGHT_TEMP,
     CONF_ROOM_NAME,
     CONF_ROOMS,
@@ -62,9 +59,6 @@ class RoomConfig:
     extra_sensors: list[str]
     day_temp: float
     night_temp: float
-    day_start: str
-    night_start: str
-    morning_time: str
     morning_temp: float
     min_temp: float
     max_temp: float
@@ -152,9 +146,6 @@ class WavinSmartHeatCoordinator:
                     extra_sensors=room.get(CONF_EXTRA_SENSORS, []),
                     day_temp=float(room[CONF_DAY_TEMP]),
                     night_temp=float(room[CONF_NIGHT_TEMP]),
-                    day_start=room[CONF_DAY_START],
-                    night_start=room[CONF_NIGHT_START],
-                    morning_time=room.get(CONF_MORNING_TIME, "06:30"),
                     morning_temp=float(room.get(CONF_MORNING_TEMP, room[CONF_DAY_TEMP])),
                     min_temp=float(room.get(CONF_MIN_TEMP, 17.0)),
                     max_temp=float(room.get(CONF_MAX_TEMP, 24.0)),
@@ -300,17 +291,9 @@ class WavinSmartHeatCoordinator:
 
     def _expected_temp(self, room: RoomConfig, sleep_time: time | None, current_temp: float) -> float:
         now = dt_util.now()
-        day_start = self._parse_time(room.day_start)
-        night_start = self._parse_time(room.night_start)
-
         expected = room.day_temp
-        if day_start and night_start:
-            if self._is_night(now, day_start, night_start):
-                expected = room.night_temp
 
-        morning_time = self._parse_time(room.morning_time)
-        if sleep_time is not None:
-            morning_time = sleep_time
+        morning_time = sleep_time
 
         if morning_time:
             preheat_minutes = self._compute_preheat_minutes(current_temp, room.morning_temp, self._is_window_open(room))
@@ -580,10 +563,6 @@ class WavinSmartHeatCoordinator:
         if target_dt < now:
             target_dt += timedelta(days=1)
         return (target_dt - now).total_seconds() / 60.0
-
-    @staticmethod
-    def _is_night(now: datetime, day_start: time, night_start: time) -> bool:
-        return not WavinSmartHeatCoordinator._is_time_between(now.time(), day_start, night_start)
 
     @staticmethod
     def _is_time_between(now: time, start: time, end: time) -> bool:
