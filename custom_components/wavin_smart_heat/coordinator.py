@@ -25,6 +25,7 @@ from .const import (
     CONF_EXTRA_SENSORS,
     CONF_LEARNING_RATE,
     CONF_LIGHT_ENTITIES,
+    CONF_OCCUPANCY_ENTITIES,
     CONF_MAX_TEMP,
     CONF_MIN_TEMP,
     CONF_MORNING_TEMP,
@@ -40,6 +41,7 @@ from .const import (
     CONF_UV_SENSOR,
     CONF_UPDATE_INTERVAL,
     CONF_WEATHER_ENTITY,
+    CONF_WINDOW_SENSORS,
     DEFAULT_LEARNING_RATE,
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
@@ -55,6 +57,8 @@ class RoomConfig:
     climate_entity: str
     temp_sensor: str
     light_entities: list[str]
+    occupancy_entities: list[str]
+    window_sensors: list[str]
     extra_sensors: list[str]
     day_temp: float
     night_temp: float
@@ -143,6 +147,8 @@ class WavinSmartHeatCoordinator:
                     climate_entity=room[CONF_CLIMATE_ENTITY],
                     temp_sensor=room[CONF_TEMP_SENSOR],
                     light_entities=room.get(CONF_LIGHT_ENTITIES, []),
+                    occupancy_entities=room.get(CONF_OCCUPANCY_ENTITIES, []),
+                    window_sensors=room.get(CONF_WINDOW_SENSORS, []),
                     extra_sensors=room.get(CONF_EXTRA_SENSORS, []),
                     day_temp=float(room[CONF_DAY_TEMP]),
                     night_temp=float(room[CONF_NIGHT_TEMP]),
@@ -189,8 +195,8 @@ class WavinSmartHeatCoordinator:
             if current_temp is None:
                 current_temp = room.night_temp
 
-            lights_on = self._lights_on(room)
-            effective_sleep_time = None if lights_on else sleep_time
+            occupied = self._is_room_active(room)
+            effective_sleep_time = None if occupied else sleep_time
 
             features = self._build_features(
                 room,
@@ -230,6 +236,8 @@ class WavinSmartHeatCoordinator:
     ) -> dict[str, float]:
         features: dict[str, float] = {}
         features.update(global_values)
+
+        features["window_open"] = 1.0 if self._is_window_open(room) else 0.0
 
         if sleep_time is not None:
             minutes_until = self._minutes_until_time(sleep_time)
@@ -305,7 +313,7 @@ class WavinSmartHeatCoordinator:
             morning_time = sleep_time
 
         if morning_time:
-            preheat_minutes = self._compute_preheat_minutes(current_temp, room.morning_temp)
+            preheat_minutes = self._compute_preheat_minutes(current_temp, room.morning_temp, self._is_window_open(room))
             preheat_start = (
                 datetime.combine(now.date(), morning_time)
                 - timedelta(minutes=preheat_minutes)
@@ -330,7 +338,7 @@ class WavinSmartHeatCoordinator:
         target = min(max(target, room.min_temp), room.max_temp)
         return round(target, 1)
 
-    def _compute_preheat_minutes(self, current_temp: float, target_temp: float) -> int:
+    def _compute_preheat_minutes(self, current_temp: float, target_temp: float, window_open: bool) -> int:
         # Dynamic preheat based on weather-driven heat loss and temperature gap.
         outside = float(self.global_state.get("outside_temp", 10.0))
         wind = float(self.global_state.get("wind_speed", 0.0))
@@ -342,6 +350,8 @@ class WavinSmartHeatCoordinator:
         minutes += max(0.0, 18.0 - outside) * 2.0
         minutes += wind * 2.0
         minutes += max(0.0, clouds - 50.0) * 0.2
+        if window_open:
+            minutes += 20.0
 
         return int(max(30, min(180, minutes)))
 
@@ -372,6 +382,22 @@ class WavinSmartHeatCoordinator:
         if not light_entities and room.area_id:
             light_entities = self._lights_from_area(room.area_id)
         for entity_id in light_entities:
+            state = self.hass.states.get(entity_id)
+            if state and state.state == "on":
+                return True
+        return False
+
+    def _is_room_active(self, room: RoomConfig) -> bool:
+        if self._lights_on(room):
+            return True
+        for entity_id in room.occupancy_entities:
+            state = self.hass.states.get(entity_id)
+            if state and state.state == "on":
+                return True
+        return False
+
+    def _is_window_open(self, room: RoomConfig) -> bool:
+        for entity_id in room.window_sensors:
             state = self.hass.states.get(entity_id)
             if state and state.state == "on":
                 return True

@@ -19,6 +19,7 @@ from .const import (
     CONF_EXTRA_SENSORS,
     CONF_LEARNING_RATE,
     CONF_LIGHT_ENTITIES,
+    CONF_OCCUPANCY_ENTITIES,
     CONF_MAX_TEMP,
     CONF_MIN_TEMP,
     CONF_MORNING_TEMP,
@@ -86,6 +87,12 @@ def _room_schema(room: dict[str, Any] | None) -> vol.Schema:
             ),
             vol.Optional(CONF_LIGHT_ENTITIES, default=defaults.get(CONF_LIGHT_ENTITIES, [])): selector.EntitySelector(
                 selector.EntitySelectorConfig(domain="light", multiple=True)
+            ),
+            vol.Optional(CONF_OCCUPANCY_ENTITIES, default=defaults.get(CONF_OCCUPANCY_ENTITIES, [])): selector.EntitySelector(
+                selector.EntitySelectorConfig(domain=["light", "switch"], multiple=True)
+            ),
+            vol.Optional(CONF_WINDOW_SENSORS, default=defaults.get(CONF_WINDOW_SENSORS, [])): selector.EntitySelector(
+                selector.EntitySelectorConfig(domain="binary_sensor", multiple=True)
             ),
             vol.Optional(CONF_EXTRA_SENSORS, default=defaults.get(CONF_EXTRA_SENSORS, [])): selector.EntitySelector(
                 selector.EntitySelectorConfig(domain="sensor", multiple=True)
@@ -158,3 +165,4 @@ class WavinSmartHeatOptionsFlow(config_entries.OptionsFlow):
 
         defaults = dict(self._entry.options)
         return self.async_show_form(step_id="init", data_schema=_global_schema(defaults))
+    CONF_WINDOW_SENSORS,

@@ -25,6 +25,8 @@
           "climate_entity": "Climate entity",
           "temp_sensor": "Temperature sensor",
           "light_entities": "Light entities (optional)",
+          "occupancy_entities": "Occupancy entities (lights/switches)",
+          "window_sensors": "Window sensors (optional)",
           "extra_sensors": "Extra sensors (optional)",
           "day_temp": "Day temperature",
           "night_temp": "Night temperature",
