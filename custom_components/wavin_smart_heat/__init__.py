@@ -20,11 +20,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     frontend.async_register_built_in_panel(
         hass,
         "lovelace",
-        "Wavin Heat",
-        "mdi:fire",
-        "wavin_heat",
+        sidebar_title="Wavin Heat",
+        sidebar_icon="mdi:fire",
+        frontend_url_path="wavin_heat",
         config={"mode": "storage"},
         require_admin=False,
+        update=True,
     )
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

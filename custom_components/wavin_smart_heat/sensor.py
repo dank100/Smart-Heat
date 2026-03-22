@@ -104,7 +104,7 @@ class WavinSmartHeatSensor(SensorEntity):
             self._unsub_dispatcher = None
 
     def _handle_update(self) -> None:
-        self.async_write_ha_state()
+        self.async_schedule_update_ha_state(True)
 
     @property
     def available(self) -> bool:
@@ -164,7 +164,7 @@ class WavinSmartHeatGlobalSensor(SensorEntity):
             self._unsub_dispatcher = None
 
     def _handle_update(self) -> None:
-        self.async_write_ha_state()
+        self.async_schedule_update_ha_state(True)
 
     @property
     def available(self) -> bool:
