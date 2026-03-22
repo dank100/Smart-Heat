@@ -58,7 +58,15 @@ async def async_setup_entry(
         for description in SENSOR_TYPES:
             entities.append(WavinSmartHeatSensor(coordinator, room_name, description))
 
+    has_weather = bool(coordinator._resolve_weather_entity())
+    has_sun_elevation = bool(coordinator._get_sun_elevation_sensor()) or bool(coordinator._get_sun_entity())
+    has_uv = bool(coordinator._get_uv_sensor()) or has_weather
+
     for description in GLOBAL_SENSOR_TYPES:
+        if description.key == "sun_elevation" and not has_sun_elevation:
+            continue
+        if description.key == "uv_index" and not has_uv:
+            continue
         entities.append(WavinSmartHeatGlobalSensor(coordinator, description))
 
     async_add_entities(entities)
