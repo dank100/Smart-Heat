@@ -72,6 +72,7 @@ class WavinSmartHeatCoordinator:
     _FEATURE_CLAMP = 10000.0
     _TARGET_STEP_MAX = 0.3
     _TARGET_EPSILON = 0.05
+    _TARGET_OVERRIDES_KEY = "target_overrides"
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         self.hass = hass
@@ -340,7 +341,7 @@ class WavinSmartHeatCoordinator:
 
     def _expected_temp(self, room: RoomConfig, sleep_time: time | None, current_temp: float) -> float:
         now = dt_util.now()
-        expected = room.day_temp
+        expected = self._get_room_target(room)
 
         morning_time = sleep_time
 
@@ -354,6 +355,27 @@ class WavinSmartHeatCoordinator:
                 expected = max(expected, room.morning_temp)
 
         return expected
+
+    def _get_room_target(self, room: RoomConfig) -> float:
+        overrides = self.model_state.setdefault(self._TARGET_OVERRIDES_KEY, {})
+        override = overrides.get(room.room_name)
+        if override is None:
+            overrides[room.room_name] = float(room.day_temp)
+            return float(room.day_temp)
+        try:
+            return float(override)
+        except (TypeError, ValueError):
+            overrides[room.room_name] = float(room.day_temp)
+            return float(room.day_temp)
+
+    async def async_set_room_target(self, room_name: str, value: float) -> None:
+        overrides = self.model_state.setdefault(self._TARGET_OVERRIDES_KEY, {})
+        try:
+            overrides[room_name] = float(value)
+        except (TypeError, ValueError):
+            return
+        await self.store.async_save(self.model_state)
+        self.hass.async_create_task(self._async_update())
 
     def _recommend_target(
         self,

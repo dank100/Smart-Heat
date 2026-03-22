@@ -24,8 +24,7 @@ class WavinSensorDescription(SensorEntityDescription):
 
 
 SENSOR_TYPES: list[WavinSensorDescription] = [
-    WavinSensorDescription(key="predicted_delta", name="Predicted Temp Delta", unit="°C"),
-    WavinSensorDescription(key="expected_temp", name="Expected Target Temp", unit="°C"),
+    WavinSensorDescription(key="current_temp", name="Current Temp", unit="°C"),
     WavinSensorDescription(key="recommended_target", name="Recommended Target Temp", unit="°C"),
     WavinSensorDescription(key="confidence", name="Prediction Confidence", unit=None),
 ]

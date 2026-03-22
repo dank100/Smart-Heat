@@ -1,7 +1,7 @@
 """Constants for Wavin Smart Heat."""
 
 DOMAIN = "wavin_smart_heat"
-PLATFORMS = ["sensor"]
+PLATFORMS = ["sensor", "number"]
 
 CONF_ROOMS = "rooms"
 CONF_ROOM_NAME = "room_name"

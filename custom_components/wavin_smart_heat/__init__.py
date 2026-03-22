@@ -92,20 +92,23 @@ async def _async_ensure_wavin_dashboard(hass: HomeAssistant, entry_id: str) -> N
 def _collect_room_entities(hass: HomeAssistant, entry_id: str) -> tuple[dict[str, list[str]], list[str]]:
     registry = async_get_entity_registry(hass)
     room_entities: dict[str, list[str]] = {}
-    # Room sensors
+    # Room sensors + room target
     room_names = []
     coordinator = hass.data.get(DOMAIN, {}).get(entry_id)
     if coordinator:
         room_names = [room.room_name for room in coordinator._room_configs()]
 
     room_keys = [
-        "predicted_delta",
-        "expected_temp",
+        "current_temp",
         "recommended_target",
         "confidence",
     ]
     for room_name in room_names:
         room_entities[room_name] = []
+        number_unique_id = f"{entry_id}_{room_name}_target_override"
+        number_entry = registry.async_get_entity_id("number", DOMAIN, number_unique_id)
+        if number_entry:
+            room_entities[room_name].append(number_entry)
         for key in room_keys:
             unique_id = f"{entry_id}_{room_name}_{key}"
             entry = registry.async_get_entity_id("sensor", DOMAIN, unique_id)
@@ -143,6 +146,10 @@ def _build_default_dashboard_config(
     for room_name, entities in room_entities.items():
         if not entities:
             continue
+        graph_entities = []
+        for entity in entities:
+            if "current_temp" in entity or "recommended_target" in entity:
+                graph_entities.append(entity)
         sections.append(
             {
                 "type": "grid",
@@ -155,6 +162,13 @@ def _build_default_dashboard_config(
                         "type": "entities",
                         "title": f"{room_name} Sensors",
                         "entities": entities,
+                    },
+                    {
+                        "type": "history-graph",
+                        "title": f"{room_name} Temperature Trend",
+                        "hours_to_show": 24,
+                        "refresh_interval": 60,
+                        "entities": graph_entities,
                     },
                 ],
             }
@@ -205,6 +219,17 @@ def _needs_dashboard_refresh(
     sections = first_view.get("sections")
     if not isinstance(sections, list) or not sections:
         return True
+    # If deprecated entities remain, rebuild the dashboard.
+    for section in sections:
+        cards = section.get("cards", [])
+        for card in cards:
+            if card.get("type") != "entities":
+                continue
+            for entity in card.get("entities", []):
+                if isinstance(entity, str) and entity.endswith("predicted_temp_delta"):
+                    return True
+        if not any(card.get("type") == "history-graph" for card in cards):
+            return True
     has_any = any(room_entities.values()) or bool(global_entities)
     return has_any and not sections
 
