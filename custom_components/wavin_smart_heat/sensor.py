@@ -137,8 +137,10 @@ class WavinSmartHeatSensor(SensorEntity):
             return {}
         return {
             "current_temp": state.get("current_temp"),
+            "current_temp_source": state.get("current_temp_source"),
             "sleep_time": state.get("sleep_time"),
             "data_source": state.get("data_source"),
+            "recommendation_components": state.get("recommendation_components"),
         }
 
 
