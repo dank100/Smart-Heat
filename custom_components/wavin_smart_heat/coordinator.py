@@ -70,20 +70,21 @@ class WavinSmartHeatCoordinator:
 
     _PREDICTION_CLAMP = 5.0
     _FEATURE_CLAMP = 10000.0
-    _TARGET_STEP_MAX = 0.3
+    _TARGET_STEP_MAX = 0.2
     _TARGET_EPSILON = 0.05
+    _TARGET_HYSTERESIS = 0.3
+    _TARGET_MIN_INTERVAL = timedelta(minutes=30)
+    _LOSS_COMP_MULTIPLIER = 1.0
+    _LOSS_COMP_MIN_DELTA = 0.2
+    _LOSS_COMP_SLEEP_WINDOW_MIN = 180
+    _LOSS_COMP_WIND_THRESHOLD = 6.0
+    _LOSS_COMP_OUTSIDE_THRESHOLD = 5.0
     _TARGET_OVERRIDES_KEY = "target_overrides"
-    _LOSS_COMP_MULTIPLIER = 2.0
-    _HEAT_UP_COMP_MULTIPLIER = 0.6
-    _OVERSHOOT_CUT_MULTIPLIER = 0.8
-    _FALLBACK_TEMP_COMP_DAMPING = 0.5
-    _TEMP_ERROR_DEADBAND = 0.15
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         self.hass = hass
         self.entry = entry
-        self.store_key = f"{STORAGE_KEY}_{entry.entry_id}"
-        self.store = Store(hass, STORAGE_VERSION, self.store_key)
+        self.store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
         self.model_state: dict[str, Any] = {}
         self.room_states: dict[str, dict[str, Any]] = {}
         self.global_state: dict[str, Any] = {}
@@ -95,15 +96,7 @@ class WavinSmartHeatCoordinator:
 
     async def async_initialize(self) -> None:
         stored = await self.store.async_load()
-        if stored is not None:
-            self.model_state = stored
-        else:
-            # Migration path for older shared storage.
-            legacy_store = Store(self.hass, STORAGE_VERSION, STORAGE_KEY)
-            legacy_state = await legacy_store.async_load()
-            self.model_state = legacy_state or {}
-            if legacy_state is not None:
-                await self.store.async_save(self.model_state)
+        self.model_state = stored or {}
         await self._async_update()
 
         interval = self._get_update_interval()
@@ -196,21 +189,16 @@ class WavinSmartHeatCoordinator:
 
         for room in self._room_configs():
             current_temp = self._get_float_state(room.temp_sensor)
-            current_temp_source = "temp_sensor"
             has_real_temp = current_temp is not None
             if current_temp is None:
                 current_temp = self._get_climate_current_temp(room.climate_entity)
-                current_temp_source = "climate_current_temperature"
                 has_real_temp = current_temp is not None
             if current_temp is None:
                 current_temp = self._get_climate_target_temp(room.climate_entity)
-                current_temp_source = "climate_target_temperature"
             if current_temp is None:
                 current_temp = self._get_last_temp(room.room_name)
-                current_temp_source = "model_last_temp"
             if current_temp is None:
                 current_temp = room.night_temp
-                current_temp_source = "room_night_temp_default"
 
             occupied = self._is_room_active(room)
             effective_sleep_time = None if occupied else sleep_time
@@ -228,13 +216,7 @@ class WavinSmartHeatCoordinator:
             predicted_delta = self._sanitize_prediction(predicted_delta)
 
             expected_temp = self._expected_temp(room, effective_sleep_time, current_temp)
-            recommended_target, recommendation_components = self._recommend_target(
-                room,
-                current_temp,
-                expected_temp,
-                predicted_delta,
-                has_real_temp,
-            )
+            recommended_target = self._recommend_target(room, current_temp, expected_temp, predicted_delta, features)
             recommended_target = self._smooth_target(room.room_name, recommended_target)
 
             self.room_states[room.room_name] = {
@@ -242,11 +224,9 @@ class WavinSmartHeatCoordinator:
                 "expected_temp": expected_temp,
                 "recommended_target": recommended_target,
                 "current_temp": current_temp,
-                "current_temp_source": current_temp_source,
                 "sleep_time": effective_sleep_time.isoformat() if effective_sleep_time else None,
                 "confidence": self._confidence(room.room_name, features),
                 "data_source": self.data_source_info,
-                "recommendation_components": recommendation_components,
                 "features": features,
             }
 
@@ -410,56 +390,63 @@ class WavinSmartHeatCoordinator:
         current_temp: float,
         expected_temp: float,
         predicted_delta: float,
-        has_real_temp: bool,
-    ) -> tuple[float, dict[str, Any]]:
-        loss_comp = max(0.0, -predicted_delta) * self._LOSS_COMP_MULTIPLIER
-        temp_error = expected_temp - current_temp
-        if abs(temp_error) <= self._TEMP_ERROR_DEADBAND:
-            temp_error = 0.0
+        features: dict[str, float],
+    ) -> float:
+        loss_comp = 0.0
+        if predicted_delta < -self._LOSS_COMP_MIN_DELTA:
+            imminent = False
+            minutes_until = features.get("minutes_until_sleep_end")
+            if minutes_until is not None and minutes_until <= self._LOSS_COMP_SLEEP_WINDOW_MIN:
+                imminent = True
+            outside = self.global_state.get("outside_temp")
+            wind = self.global_state.get("wind_speed")
+            if outside is not None and float(outside) <= self._LOSS_COMP_OUTSIDE_THRESHOLD:
+                imminent = True
+            if wind is not None and float(wind) >= self._LOSS_COMP_WIND_THRESHOLD:
+                imminent = True
+            if imminent:
+                loss_comp = max(0.0, -predicted_delta) * self._LOSS_COMP_MULTIPLIER
 
-        heat_up_comp = max(0.0, temp_error) * self._HEAT_UP_COMP_MULTIPLIER
-        overshoot_cut = max(0.0, -temp_error) * self._OVERSHOOT_CUT_MULTIPLIER
-
-        if not has_real_temp:
-            damping = self._FALLBACK_TEMP_COMP_DAMPING
-            loss_comp *= damping
-            heat_up_comp *= damping
-            overshoot_cut *= damping
-
-        target = expected_temp + loss_comp + heat_up_comp - overshoot_cut
+        target = expected_temp + loss_comp
         if current_temp < expected_temp:
             target = max(target, expected_temp + 0.2)
 
         target = min(max(target, room.min_temp), room.max_temp)
-        rounded_target = round(target, 1)
-        components = {
-            "temp_error": round(temp_error, 3),
-            "loss_comp": round(loss_comp, 3),
-            "heat_up_comp": round(heat_up_comp, 3),
-            "overshoot_cut": round(overshoot_cut, 3),
-            "has_real_temp": has_real_temp,
-            "deadband": self._TEMP_ERROR_DEADBAND,
-        }
-        return rounded_target, components
+        return round(target, 1)
 
     def _smooth_target(self, room_name: str, target: float) -> float:
         model = self.model_state.setdefault(room_name, {})
         last_target = model.get("last_recommended_target")
+        last_update_raw = model.get("last_recommended_at")
+        last_update = None
+        if isinstance(last_update_raw, str):
+            try:
+                last_update = dt_util.parse_datetime(last_update_raw)
+            except (TypeError, ValueError):
+                last_update = None
         if last_target is None:
             model["last_recommended_target"] = float(target)
+            model["last_recommended_at"] = dt_util.now().isoformat()
             return target
         try:
             last_target = float(last_target)
         except (TypeError, ValueError):
             model["last_recommended_target"] = float(target)
+            model["last_recommended_at"] = dt_util.now().isoformat()
             return target
 
         if abs(target - last_target) <= self._TARGET_EPSILON:
             return last_target
+        if abs(target - last_target) < self._TARGET_HYSTERESIS:
+            return last_target
+        if last_update is not None:
+            if dt_util.now() - last_update < self._TARGET_MIN_INTERVAL:
+                return last_target
 
         step = max(-self._TARGET_STEP_MAX, min(self._TARGET_STEP_MAX, target - last_target))
         new_target = last_target + step
         model["last_recommended_target"] = float(new_target)
+        model["last_recommended_at"] = dt_util.now().isoformat()
         return round(new_target, 1)
 
     def _compute_preheat_minutes(self, current_temp: float, target_temp: float, window_open: bool) -> int:
