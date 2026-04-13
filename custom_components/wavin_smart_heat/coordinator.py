@@ -145,7 +145,7 @@ class WavinSmartHeatCoordinator:
         return str(self.entry.options.get(CONF_UV_SENSOR, self.entry.data.get(CONF_UV_SENSOR, "")))
 
     def _room_configs(self) -> list[RoomConfig]:
-        rooms = self.entry.data.get(CONF_ROOMS, [])
+        rooms = self.entry.options.get(CONF_ROOMS, self.entry.data.get(CONF_ROOMS, []))
         configs: list[RoomConfig] = []
         for room in rooms:
             configs.append(
@@ -201,13 +201,14 @@ class WavinSmartHeatCoordinator:
                 current_temp = room.night_temp
 
             occupied = self._is_room_active(room)
-            effective_sleep_time = None if occupied else sleep_time
+            effective_sleep_time = sleep_time
 
-            features = self._build_features(
-                room,
-                global_values,
-                effective_sleep_time,
-            )
+        features = self._build_features(
+            room,
+            global_values,
+            effective_sleep_time,
+            occupied,
+        )
             if has_real_temp:
                 predicted_delta = self._predict_and_learn(room.room_name, features, current_temp, learning_rate)
             else:
@@ -241,12 +242,14 @@ class WavinSmartHeatCoordinator:
         room: RoomConfig,
         global_values: dict[str, float],
         sleep_time: time | None,
+        occupied: bool,
     ) -> dict[str, float]:
         features: dict[str, float] = {}
         for key, value in global_values.items():
             features[key] = self._sanitize_feature(value)
 
         features["window_open"] = 1.0 if self._is_window_open(room) else 0.0
+        features["room_active"] = 1.0 if occupied else 0.0
 
         if sleep_time is not None:
             minutes_until = self._minutes_until_time(sleep_time)

@@ -158,11 +158,112 @@ class WavinSmartHeatOptionsFlow(config_entries.OptionsFlow):
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         self._entry = config_entry
+        self._options: dict[str, Any] = dict(config_entry.options)
+        self._rooms: list[dict[str, Any]] = list(
+            config_entry.options.get(CONF_ROOMS, config_entry.data.get(CONF_ROOMS, []))
+        )
+        self._edit_room_name: str | None = None
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None):
         if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
+            choice = user_input["menu"]
+            if choice == "global":
+                return await self.async_step_global()
+            if choice == "add_room":
+                return await self.async_step_add_room()
+            if choice == "edit_room":
+                return await self.async_step_edit_room_select()
+            if choice == "remove_room":
+                return await self.async_step_remove_room()
+            return await self.async_step_finish()
 
-        defaults = dict(self._entry.options)
-        return self.async_show_form(step_id="init", data_schema=_global_schema(defaults))
-    CONF_WINDOW_SENSORS,
+        schema = vol.Schema(
+            {
+                vol.Required("menu", default="global"): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[
+                            {"value": "global", "label": "Edit global settings"},
+                            {"value": "add_room", "label": "Add a room"},
+                            {"value": "edit_room", "label": "Edit a room"},
+                            {"value": "remove_room", "label": "Remove a room"},
+                            {"value": "finish", "label": "Finish"},
+                        ],
+                        mode="list",
+                    )
+                )
+            }
+        )
+        return self.async_show_form(step_id="init", data_schema=schema)
+
+    async def async_step_global(self, user_input: dict[str, Any] | None = None):
+        if user_input is not None:
+            self._options.update(user_input)
+            return await self.async_step_init()
+
+        defaults = {**self._entry.data, **self._options}
+        return self.async_show_form(step_id="global", data_schema=_global_schema(defaults))
+
+    async def async_step_add_room(self, user_input: dict[str, Any] | None = None):
+        if user_input is not None:
+            self._rooms.append(user_input)
+            return await self.async_step_init()
+
+        return self.async_show_form(step_id="add_room", data_schema=_room_schema({}))
+
+    async def async_step_edit_room_select(self, user_input: dict[str, Any] | None = None):
+        room_names = [room.get(CONF_ROOM_NAME, "") for room in self._rooms]
+        if user_input is not None:
+            self._edit_room_name = user_input[CONF_ROOM_NAME]
+            return await self.async_step_edit_room()
+
+        if not room_names:
+            return await self.async_step_init()
+
+        schema = vol.Schema(
+            {
+                vol.Required(CONF_ROOM_NAME): selector.SelectSelector(
+                    selector.SelectSelectorConfig(options=room_names, mode="list")
+                )
+            }
+        )
+        return self.async_show_form(step_id="edit_room_select", data_schema=schema)
+
+    async def async_step_edit_room(self, user_input: dict[str, Any] | None = None):
+        if user_input is not None and self._edit_room_name is not None:
+            for idx, room in enumerate(self._rooms):
+                if room.get(CONF_ROOM_NAME) == self._edit_room_name:
+                    self._rooms[idx] = user_input
+                    break
+            self._edit_room_name = None
+            return await self.async_step_init()
+
+        current = {}
+        if self._edit_room_name:
+            for room in self._rooms:
+                if room.get(CONF_ROOM_NAME) == self._edit_room_name:
+                    current = room
+                    break
+        return self.async_show_form(step_id="edit_room", data_schema=_room_schema(current))
+
+    async def async_step_remove_room(self, user_input: dict[str, Any] | None = None):
+        room_names = [room.get(CONF_ROOM_NAME, "") for room in self._rooms]
+        if user_input is not None:
+            name = user_input[CONF_ROOM_NAME]
+            self._rooms = [room for room in self._rooms if room.get(CONF_ROOM_NAME) != name]
+            return await self.async_step_init()
+
+        if not room_names:
+            return await self.async_step_init()
+
+        schema = vol.Schema(
+            {
+                vol.Required(CONF_ROOM_NAME): selector.SelectSelector(
+                    selector.SelectSelectorConfig(options=room_names, mode="list")
+                )
+            }
+        )
+        return self.async_show_form(step_id="remove_room", data_schema=schema)
+
+    async def async_step_finish(self, user_input: dict[str, Any] | None = None):
+        data = {**self._options, CONF_ROOMS: self._rooms}
+        return self.async_create_entry(title="", data=data)

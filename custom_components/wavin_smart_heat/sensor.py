@@ -12,6 +12,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers import entity_registry as er
 
 from .const import CONF_ROOMS, CONF_ROOM_NAME, DOMAIN
 from .coordinator import WavinSmartHeatCoordinator
@@ -29,6 +30,9 @@ SENSOR_TYPES: list[WavinSensorDescription] = [
     WavinSensorDescription(key="confidence", name="Prediction Confidence", unit=None),
 ]
 
+
+DEPRECATED_ROOM_KEYS = {"predicted_delta", "expected_temp", "expected_target"}
+
 GLOBAL_SENSOR_TYPES: list[WavinSensorDescription] = [
     WavinSensorDescription(key="sun_elevation", name="Sun Elevation", unit="°"),
     WavinSensorDescription(key="wind_speed", name="Wind Speed", unit=None),
@@ -43,6 +47,23 @@ GLOBAL_SENSOR_TYPES: list[WavinSensorDescription] = [
 ]
 
 
+
+
+async def _cleanup_deprecated_entities(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    registry = er.async_get(hass)
+    to_remove: list[str] = []
+    for entity in list(registry.entities.values()):
+        if entity.config_entry_id != entry.entry_id:
+            continue
+        unique_id = entity.unique_id or ""
+        for key in DEPRECATED_ROOM_KEYS:
+            if unique_id.endswith(f"_{key}"):
+                to_remove.append(entity.entity_id)
+                break
+    for entity_id in to_remove:
+        registry.async_remove(entity_id)
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -50,6 +71,8 @@ async def async_setup_entry(
 ) -> None:
     coordinator: WavinSmartHeatCoordinator = hass.data[DOMAIN][entry.entry_id]
     entities: list[SensorEntity] = []
+
+    await _cleanup_deprecated_entities(hass, entry)
 
     for room in entry.data.get(CONF_ROOMS, []):
         room_name = room.get(CONF_ROOM_NAME)
