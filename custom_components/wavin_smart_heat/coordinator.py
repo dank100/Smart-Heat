@@ -203,12 +203,12 @@ class WavinSmartHeatCoordinator:
             occupied = self._is_room_active(room)
             effective_sleep_time = sleep_time
 
-        features = self._build_features(
-            room,
-            global_values,
-            effective_sleep_time,
-            occupied,
-        )
+            features = self._build_features(
+                room,
+                global_values,
+                effective_sleep_time,
+                occupied,
+            )
             if has_real_temp:
                 predicted_delta = self._predict_and_learn(room.room_name, features, current_temp, learning_rate)
             else:
