@@ -1,7 +1,7 @@
 {
-  "name": "Wavin Smart Heat",
+  "name": "Home Assistant Heating Control",
   "content_in_root": false,
-  "domains": ["wavin_smart_heat"],
+  "domains": ["wavin_smart_heat", "jellyfin_browser"],
   "country": ["DK"],
   "iot_class": "local_polling",
   "render_readme": true

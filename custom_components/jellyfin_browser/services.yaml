@@ -1,0 +1,92 @@
+refresh:
+  name: Refresh
+  description: Refresh the cached Jellyfin library and session data.
+  fields:
+    config_entry_id:
+      name: Config entry id
+      description: Needed only if more than one Jellyfin Browser entry is configured.
+
+get_content:
+  name: Get content
+  description: Return Jellyfin library items from the configured server.
+  fields:
+    config_entry_id:
+      name: Config entry id
+      description: Needed only if more than one Jellyfin Browser entry is configured.
+    search:
+      name: Search
+      description: Optional text to filter item names.
+      example: dune
+    item_types:
+      name: Item types
+      description: Optional Jellyfin item types such as Movie, Series, Episode, MusicAlbum, Audio, or Video.
+    limit:
+      name: Limit
+      description: Optional maximum number of results to return.
+
+get_devices:
+  name: Get devices
+  description: Return active Jellyfin sessions that support remote control.
+  fields:
+    config_entry_id:
+      name: Config entry id
+      description: Needed only if more than one Jellyfin Browser entry is configured.
+
+get_live_tv_channels:
+  name: Get live TV channels
+  description: Return Jellyfin Live TV channels.
+  fields:
+    config_entry_id:
+      name: Config entry id
+      description: Needed only if more than one Jellyfin Browser entry is configured.
+    type:
+      name: Type
+      description: Optional channel type filter, TV or Radio.
+      example: TV
+    limit:
+      name: Limit
+      description: Optional maximum number of results to return.
+
+get_live_tv_programs:
+  name: Get live TV programs
+  description: Return Jellyfin Live TV guide programs.
+  fields:
+    config_entry_id:
+      name: Config entry id
+      description: Needed only if more than one Jellyfin Browser entry is configured.
+    channel_id:
+      name: Channel id
+      description: Optional single channel id filter.
+    channel_ids:
+      name: Channel ids
+      description: Optional list of channel ids to filter.
+    start:
+      name: Start
+      description: Optional ISO timestamp minimum start time.
+      example: 2026-04-21T18:00:00+02:00
+    end:
+      name: End
+      description: Optional ISO timestamp maximum end time.
+      example: 2026-04-21T23:00:00+02:00
+    limit:
+      name: Limit
+      description: Optional maximum number of results to return.
+
+play_on_device:
+  name: Play on device
+  description: Start playback of a Jellyfin item on a remote Jellyfin client session.
+  target:
+    entity:
+      integration: jellyfin_browser
+      domain: media_player
+  fields:
+    config_entry_id:
+      name: Config entry id
+      description: Needed only if more than one Jellyfin Browser entry is configured.
+    session_id:
+      name: Session id
+      description: Optional if you target a Jellyfin Browser media player entity.
+    item_id:
+      name: Item id
+      description: Jellyfin item id to cast.
+      required: true

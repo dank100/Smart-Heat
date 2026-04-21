@@ -1,4 +1,17 @@
-# Wavin Smart Heat (Home Assistant)
+# Home Assistant Custom Integrations
+
+This repository contains Home Assistant custom integrations that can be installed through HACS as a custom repository.
+
+## HACS Installation
+1. Open HACS in Home Assistant.
+2. Add this repository as a **Custom Repository** with type **Integration**.
+3. Install the integration you want from HACS.
+4. Restart Home Assistant.
+5. Add the integration from **Settings -> Devices & services**.
+
+## Included Integrations
+
+### Wavin Smart Heat
 
 Smart, predictive heating control for Wavin/ESPHome setups in Home Assistant.
 
@@ -9,12 +22,6 @@ Smart, predictive heating control for Wavin/ESPHome setups in Home Assistant.
 - Optional sleep end time preheat
 - Auto-apply recommendations on a schedule
 - Confidence sensor + data source transparency
-
-## Installation (HACS)
-1. Add this repository to HACS as a **Custom Repository** (Integration).
-2. Install **Wavin Smart Heat**.
-3. Restart Home Assistant.
-4. Add the integration via **Settings → Devices & services**.
 
 ## Configuration
 The setup wizard lets you configure per-room entities and schedules. You can leave the weather entity blank; it will automatically use the first available `weather.*` entity.
@@ -38,3 +45,21 @@ The setup wizard lets you configure per-room entities and schedules. You can lea
 
 ## Support
 Open an issue or start a discussion in this repository.
+
+### Jellyfin Browser
+
+This repository also includes a `jellyfin_browser` custom integration for Home Assistant.
+
+#### Features
+- Config flow for Jellyfin server URL and API key
+- Library summary sensor and cast-device summary sensor
+- Live TV summary sensor plus Live TV channel and program services
+- Services to list content and active cast-capable devices
+- `media_player` entities for remote-controllable Jellyfin sessions
+
+#### Example services
+- `jellyfin_browser.get_content`
+- `jellyfin_browser.get_devices`
+- `jellyfin_browser.get_live_tv_channels`
+- `jellyfin_browser.get_live_tv_programs`
+- `jellyfin_browser.play_on_device`

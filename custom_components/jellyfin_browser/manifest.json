@@ -1,0 +1,10 @@
+{
+  "domain": "jellyfin_browser",
+  "name": "Jellyfin Browser",
+  "version": "0.1.0",
+  "documentation": "https://github.com/dkr/direct-puma-cache-api",
+  "config_flow": true,
+  "iot_class": "local_polling",
+  "codeowners": ["@local"],
+  "requirements": []
+}

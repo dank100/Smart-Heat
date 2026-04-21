@@ -1,0 +1,31 @@
+{
+  "title": "Jellyfin Browser",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Jellyfin Browser",
+        "description": "Connect Home Assistant to a Jellyfin server using its URL and API key.",
+        "data": {
+          "server_url": "Jellyfin server URL",
+          "api_key": "API key",
+          "update_interval": "Refresh interval (seconds)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to Jellyfin with the provided URL or API key.",
+      "unknown": "An unexpected error occurred."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Jellyfin Browser Options",
+        "description": "Adjust how often Home Assistant refreshes Jellyfin data.",
+        "data": {
+          "update_interval": "Refresh interval (seconds)"
+        }
+      }
+    }
+  }
+}
