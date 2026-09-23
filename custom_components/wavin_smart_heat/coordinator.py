@@ -218,7 +218,13 @@ class WavinSmartHeatCoordinator:
 
             expected_temp = self._expected_temp(room, effective_sleep_time, current_temp)
             recommended_target = self._recommend_target(room, current_temp, expected_temp, predicted_delta, features)
-            recommended_target = self._smooth_target(room.room_name, recommended_target)
+            recommended_target = self._smooth_target(
+                room.room_name,
+                recommended_target,
+                room,
+                current_temp,
+                effective_sleep_time,
+            )
 
             self.room_states[room.room_name] = {
                 "predicted_delta": predicted_delta,
@@ -417,7 +423,14 @@ class WavinSmartHeatCoordinator:
         target = min(max(target, room.min_temp), room.max_temp)
         return round(target, 1)
 
-    def _smooth_target(self, room_name: str, target: float) -> float:
+    def _smooth_target(
+        self,
+        room_name: str,
+        target: float,
+        room: RoomConfig,
+        current_temp: float,
+        sleep_time: time | None,
+    ) -> float:
         model = self.model_state.setdefault(room_name, {})
         last_target = model.get("last_recommended_target")
         last_update_raw = model.get("last_recommended_at")
@@ -442,6 +455,10 @@ class WavinSmartHeatCoordinator:
             return last_target
         if abs(target - last_target) < self._TARGET_HYSTERESIS:
             return last_target
+        if self._is_preheat_active(room, current_temp, sleep_time):
+            model["last_recommended_target"] = float(target)
+            model["last_recommended_at"] = dt_util.now().isoformat()
+            return target
         if last_update is not None:
             if dt_util.now() - last_update < self._TARGET_MIN_INTERVAL:
                 return last_target
@@ -451,6 +468,26 @@ class WavinSmartHeatCoordinator:
         model["last_recommended_target"] = float(new_target)
         model["last_recommended_at"] = dt_util.now().isoformat()
         return round(new_target, 1)
+
+    def _is_preheat_active(
+        self,
+        room: RoomConfig,
+        current_temp: float,
+        sleep_time: time | None,
+    ) -> bool:
+        if sleep_time is None:
+            return False
+        preheat_minutes = self._compute_preheat_minutes(
+            float(current_temp),
+            room.morning_temp,
+            self._is_window_open(room),
+        )
+        now = dt_util.now()
+        preheat_start = (
+            datetime.combine(now.date(), sleep_time)
+            - timedelta(minutes=preheat_minutes)
+        ).time()
+        return self._is_time_between(now.time(), preheat_start, sleep_time)
 
     def _compute_preheat_minutes(self, current_temp: float, target_temp: float, window_open: bool) -> int:
         # Dynamic preheat based on weather-driven heat loss and temperature gap.
@@ -681,9 +718,10 @@ class WavinSmartHeatCoordinator:
     def _parse_time_from_state(value: str) -> time | None:
         if not value:
             return None
-        if "T" in value:
+        if "T" in value or " " in value:
             try:
-                return dt_util.parse_datetime(value).time()
+                parsed = dt_util.parse_datetime(value.replace(" ", "T"))
+                return parsed.time() if parsed else None
             except (TypeError, ValueError):
                 return None
         return WavinSmartHeatCoordinator._parse_time(value)
