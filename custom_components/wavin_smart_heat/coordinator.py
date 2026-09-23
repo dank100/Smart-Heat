@@ -453,21 +453,21 @@ class WavinSmartHeatCoordinator:
         return round(new_target, 1)
 
     def _compute_preheat_minutes(self, current_temp: float, target_temp: float, window_open: bool) -> int:
-        # Dynamic preheat based on weather-driven heat loss and temperature gap.
         outside = float(self.global_state.get("outside_temp", 10.0))
         wind = float(self.global_state.get("wind_speed", 0.0))
         clouds = float(self.global_state.get("cloud_coverage", 50.0))
         temp_gap = max(0.0, target_temp - current_temp)
 
-        minutes = 40.0
-        minutes += temp_gap * 8.0
-        minutes += max(0.0, 18.0 - outside) * 2.0
-        minutes += wind * 2.0
-        minutes += max(0.0, clouds - 50.0) * 0.2
+        minutes = 50.0
+        minutes += temp_gap * 10.0
+        minutes += max(0.0, 19.0 - outside) * 3.0
+        minutes += wind * 2.5
+        minutes += max(0.0, clouds - 40.0) * 0.3
         if window_open:
-            minutes += 20.0
+            minutes += 30.0
 
-        return int(max(30, min(180, minutes)))
+        minutes += max(5.0, self._get_update_interval() / 60.0)
+        return int(max(30, min(240, minutes)))
 
     async def _async_apply_target(self, room: RoomConfig, target: float) -> None:
         state = self.hass.states.get(room.climate_entity)
