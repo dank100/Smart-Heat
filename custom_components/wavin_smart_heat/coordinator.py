@@ -79,6 +79,8 @@ class WavinSmartHeatCoordinator:
     _LOSS_COMP_SLEEP_WINDOW_MIN = 180
     _LOSS_COMP_WIND_THRESHOLD = 6.0
     _LOSS_COMP_OUTSIDE_THRESHOLD = 5.0
+    _OVERSHOOT_SOFT_C = 0.3
+    _OVERSHOOT_HARD_C = 0.8
     _TARGET_OVERRIDES_KEY = "target_overrides"
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
@@ -223,6 +225,7 @@ class WavinSmartHeatCoordinator:
                 recommended_target,
                 room,
                 current_temp,
+                expected_temp,
                 effective_sleep_time,
             )
 
@@ -419,6 +422,10 @@ class WavinSmartHeatCoordinator:
         target = expected_temp + loss_comp
         if current_temp < expected_temp:
             target = max(target, expected_temp + 0.2)
+        elif current_temp >= expected_temp + self._OVERSHOOT_HARD_C:
+            target = room.min_temp
+        elif current_temp >= expected_temp + self._OVERSHOOT_SOFT_C:
+            target = min(target, expected_temp)
 
         target = min(max(target, room.min_temp), room.max_temp)
         return round(target, 1)
@@ -429,6 +436,7 @@ class WavinSmartHeatCoordinator:
         target: float,
         room: RoomConfig,
         current_temp: float,
+        expected_temp: float,
         sleep_time: time | None,
     ) -> float:
         model = self.model_state.setdefault(room_name, {})
@@ -450,6 +458,16 @@ class WavinSmartHeatCoordinator:
             model["last_recommended_target"] = float(target)
             model["last_recommended_at"] = dt_util.now().isoformat()
             return target
+
+        if current_temp >= expected_temp + self._OVERSHOOT_HARD_C:
+            model["last_recommended_target"] = float(target)
+            model["last_recommended_at"] = dt_util.now().isoformat()
+            return round(target, 1)
+
+        if current_temp >= expected_temp + self._OVERSHOOT_SOFT_C and target < last_target:
+            model["last_recommended_target"] = float(target)
+            model["last_recommended_at"] = dt_util.now().isoformat()
+            return round(target, 1)
 
         if abs(target - last_target) <= self._TARGET_EPSILON:
             return last_target
